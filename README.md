@@ -24,7 +24,7 @@
 
 </div>
 
-## Executive Summary & The YC Thesis
+## Executive Summary, Platform Overview & Design Rationale
 
 Modern commercial space is experiencing an exponential inflection point: satellite constellations are shifting from bespoke, single-spacecraft science missions to **mega-constellations comprising hundreds to thousands of networked orbital assets** (Starlink, Kuiper, Planet, Spire, defense mesh swarms). 
 
