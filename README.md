@@ -568,6 +568,6 @@ This project is licensed under the Apache 2.0 / MIT Dual License. See [LICENSE](
 <div align="center">
 
 **Built for the next century of space operations.**  
-*For inquiries, demos, or partnership requests: contact@plato.space*
+*For inquiries, demos, or partnership requests: nectrragroup@gmail.com*
 
 </div>
