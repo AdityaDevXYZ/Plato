@@ -13,6 +13,10 @@ pub enum CommunicationStatus { Connected, Disconnected, Degraded }
 pub struct Satellite {
     pub id: Uuid,
     pub mission_id: MissionId,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub norad_id: Option<u32>,
     pub software_version: String,
     pub operational_status: OperationalStatus,
     pub health_score: u8,
@@ -26,8 +30,10 @@ pub struct Satellite {
     pub version: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PartialSatelliteTelemetry {
+    pub name: Option<String>,
+    pub norad_id: Option<u32>,
     pub software_version: Option<String>,
     pub operational_status: Option<OperationalStatus>,
     pub health_score: Option<u8>,
@@ -39,7 +45,28 @@ pub struct PartialSatelliteTelemetry {
 }
 
 impl Satellite {
+    pub fn new(id: Uuid, mission_id: MissionId, name: String, norad_id: Option<u32>, software_version: String) -> Self {
+        Self {
+            id,
+            mission_id,
+            name,
+            norad_id,
+            software_version,
+            operational_status: OperationalStatus::Active,
+            health_score: 100,
+            battery_level: 100.0,
+            storage_usage: 5.0,
+            memory_usage: 12.0,
+            cpu_utilization: 3.0,
+            last_contact: OffsetDateTime::now_utc(),
+            comm_status: CommunicationStatus::Connected,
+            version: 1,
+        }
+    }
+
     pub fn apply_partial(&mut self, partial: PartialSatelliteTelemetry) {
+        if let Some(v) = partial.name { self.name = v; }
+        if let Some(v) = partial.norad_id { self.norad_id = Some(v); }
         if let Some(v) = partial.software_version { self.software_version = v; }
         if let Some(v) = partial.operational_status { self.operational_status = v; }
         if let Some(v) = partial.health_score { self.health_score = v; }

@@ -10,6 +10,7 @@ pub mod resource_handlers;
 pub mod risk_handlers;
 pub mod coordination_handlers;
 pub mod analytics_handlers;
+pub mod entity_handlers;
 
 use axum::{routing::{get, post}, Router, Json, extract::State, middleware::from_fn_with_state};
 use serde_json::{json, Value};
@@ -47,7 +48,7 @@ use application::{
     assurance::ReleaseAssuranceService,
     readiness::DeploymentReadinessService,
     deployment::DeploymentExecutionService,
-    twin::TwinQueryService,
+    twin::{TwinQueryService, TwinUpdateService},
     orbit::OrbitalQueryService,
     planning::MissionPlanningService,
     resource::ResourceQueryService,
@@ -71,6 +72,10 @@ async fn main() -> anyhow::Result<()> {
         settings.db.max_connections,
         settings.db.connection_timeout
     ).await?;
+
+    if let Err(e) = run_migrations(&pool).await {
+        tracing::warn!("Database migration note: {:?}", e);
+    }
 
     let user_repo = Arc::new(SqlxUserRepository::new(pool.clone()));
     let event_publisher = Arc::new(eventbus::memory::InMemoryEventBus::new());
@@ -103,7 +108,8 @@ async fn main() -> anyhow::Result<()> {
     let deployment_service = Arc::new(DeploymentExecutionService::new(dep_steps, rollback_strat, deployment_repo, event_publisher.clone()));
         
     let twin_repo = Arc::new(SqlxDigitalTwinRepository::new(pool.clone()));
-    let twin_query = Arc::new(TwinQueryService::new(twin_repo));
+    let twin_query = Arc::new(TwinQueryService::new(twin_repo.clone()));
+    let twin_update = Arc::new(TwinUpdateService::new(twin_repo.clone(), event_publisher.clone()));
     
     let orbit_repo = Arc::new(SqlxOrbitRepository::new(pool.clone()));
     let orbit_query = Arc::new(OrbitalQueryService::new(orbit_repo));
@@ -145,6 +151,7 @@ async fn main() -> anyhow::Result<()> {
         dra_service: Arc::new(DeploymentReadinessService::new(readiness_pipeline, readiness_repo, event_publisher.clone())),
         dee_service: deployment_service,
         twin_query,
+        twin_update,
         orbit_query,
         planning_service,
         resource_query,
@@ -190,9 +197,20 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
+    let org_routes = Router::new()
+        .route("/", post(entity_handlers::create_organization))
+        .route("/:id", get(entity_handlers::get_organization))
+        .route_layer(from_fn_with_state(app_state.clone(), middleware::auth_middleware));
+
+    let project_routes = Router::new()
+        .route("/", post(entity_handlers::create_project))
+        .route("/:id", get(entity_handlers::get_project))
+        .route_layer(from_fn_with_state(app_state.clone(), middleware::auth_middleware));
+
     let twin_routes = Router::new()
-        .route("/satellites", get(twin_handlers::list_satellites))
+        .route("/satellites", get(twin_handlers::list_satellites).post(twin_handlers::register_satellite))
         .route("/satellites/:id", get(twin_handlers::get_satellite))
+        .route("/satellites/:id/telemetry", post(twin_handlers::ingest_telemetry))
         .route("/satellites/unhealthy", get(twin_handlers::get_unhealthy))
         .route("/missions/:id", get(twin_handlers::get_mission_assets))
         .layer(TraceLayer::new_for_http());
@@ -204,8 +222,10 @@ async fn main() -> anyhow::Result<()> {
         .layer(TraceLayer::new_for_http());
 
     let mission_routes = Router::new()
+        .route("/", post(entity_handlers::create_mission))
+        .route("/:id", get(entity_handlers::get_mission))
         .route("/:id/plan", post(planning_handlers::create_plan))
-        .layer(TraceLayer::new_for_http());
+        .route_layer(from_fn_with_state(app_state.clone(), middleware::auth_middleware));
         
     let plan_routes = Router::new()
         .route("/:id", get(planning_handlers::get_plan))
@@ -239,11 +259,13 @@ async fn main() -> anyhow::Result<()> {
         .route("/status", get(health_handlers::status))
         .route("/health", get(health_check))
         .nest("/api/v1/auth", auth_routes)
+        .nest("/api/v1/organizations", org_routes)
+        .nest("/api/v1/projects", project_routes)
+        .nest("/api/v1/missions", mission_routes)
         .nest("/api/v1/releases", roe_routes)
         .nest("/api/v1/deployments", dee_routes)
         .nest("/api/v1/twin", twin_routes)
         .nest("/api/v1/orbits", orbit_routes)
-        .nest("/api/v1/missions", mission_routes)
         .nest("/api/v1/plans", plan_routes)
         .nest("/api/v1/resources", resource_routes)
         .nest("/api/v1/risk", risk_routes)

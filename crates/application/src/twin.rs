@@ -62,6 +62,26 @@ impl TwinUpdateService {
     }
 
     #[tracing::instrument(skip(self))]
+    pub async fn register_satellite(
+        &self,
+        id: Uuid,
+        mission_id: MissionId,
+        name: String,
+        norad_id: Option<u32>,
+        software_version: String,
+    ) -> Result<Satellite, ApplicationError> {
+        let sat = Satellite::new(id, mission_id, name, norad_id, software_version);
+        self.repo.save_satellite(&sat).await.map_err(|e| ApplicationError::Repository(e.to_string()))?;
+        let event = EventMessage::new(
+            Box::new(TwinCreated { entity_id: sat.id, entity_type: "Satellite".into() }),
+            Uuid::new_v4(),
+            "plato.twin",
+        );
+        let _ = self.event_publisher.publish(vec![event]);
+        Ok(sat)
+    }
+
+    #[tracing::instrument(skip(self))]
     pub async fn update_telemetry(&self, id: Uuid, telemetry: PartialSatelliteTelemetry) -> Result<Satellite, ApplicationError> {
         let mut sat = self.repo.get_satellite(id).await
             .map_err(|e| ApplicationError::Repository(e.to_string()))?

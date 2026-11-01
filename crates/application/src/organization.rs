@@ -52,4 +52,15 @@ impl OrganizationService {
         // 4. Return result
         Ok(org)
     }
+
+    pub async fn get_organization(
+        &self,
+        id: types::OrganizationId,
+    ) -> Result<Organization, ApplicationError> {
+        self.org_repo
+            .find_by_id(id)
+            .await
+            .map_err(|e| ApplicationError::Repository(e.to_string()))?
+            .ok_or_else(|| ApplicationError::NotFound("Organization not found".into()))
+    }
 }

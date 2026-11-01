@@ -40,4 +40,15 @@ impl ProjectService {
 
         Ok(project)
     }
+
+    pub async fn get_project(
+        &self,
+        id: types::ProjectId,
+    ) -> Result<Project, ApplicationError> {
+        self.project_repo
+            .find_by_id(id)
+            .await
+            .map_err(|e| ApplicationError::Repository(e.to_string()))?
+            .ok_or_else(|| ApplicationError::NotFound("Project not found".into()))
+    }
 }
