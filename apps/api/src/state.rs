@@ -9,6 +9,24 @@ use application::{
     organization::OrganizationService, project::ProjectService, mission::MissionService,
     user::UserService,
 };
+use twin::model::{Satellite, AnomalyReport};
+use serde::{Serialize, Deserialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
+pub enum TelemetryStreamMessage {
+    TelemetryUpdate {
+        satellite: Satellite,
+        anomalies: Vec<AnomalyReport>,
+    },
+    AnomalyAlert {
+        satellite_id: uuid::Uuid,
+        anomaly: AnomalyReport,
+    },
+    Heartbeat {
+        timestamp: String,
+    },
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -31,4 +49,5 @@ pub struct AppState {
     pub analytics_service: Arc<DeploymentAnalyticsService>,
     pub user_service: Arc<UserService>,
     pub auth_service: Arc<AuthenticationService>,
+    pub telemetry_tx: tokio::sync::broadcast::Sender<TelemetryStreamMessage>,
 }
