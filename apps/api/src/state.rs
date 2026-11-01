@@ -3,7 +3,7 @@ use plato_config::Settings;
 use std::sync::Arc;
 use application::{
     auth::AuthenticationService, roe::ReleaseOrchestrationService, assurance::ReleaseAssuranceService,
-    readiness::DeploymentReadinessService, deployment::DeploymentExecutionService, twin::TwinQueryService,
+    readiness::DeploymentReadinessService, deployment::DeploymentExecutionService, twin::{TwinQueryService, TwinUpdateService},
     orbit::OrbitalQueryService, planning::MissionPlanningService, resource::ResourceQueryService,
     risk::RiskAssessmentService, coordination::CoordinationService, analytics::DeploymentAnalyticsService,
     organization::OrganizationService, project::ProjectService, mission::MissionService,
@@ -22,6 +22,7 @@ pub struct AppState {
     pub dra_service: Arc<DeploymentReadinessService>,
     pub dee_service: Arc<DeploymentExecutionService>,
     pub twin_query: Arc<TwinQueryService>,
+    pub twin_update: Arc<TwinUpdateService>,
     pub orbit_query: Arc<OrbitalQueryService>,
     pub planning_service: Arc<MissionPlanningService>,
     pub resource_query: Arc<ResourceQueryService>,

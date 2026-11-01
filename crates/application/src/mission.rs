@@ -40,4 +40,15 @@ impl MissionService {
 
         Ok(mission)
     }
+
+    pub async fn get_mission(
+        &self,
+        id: types::MissionId,
+    ) -> Result<Mission, ApplicationError> {
+        self.mission_repo
+            .find_by_id(id)
+            .await
+            .map_err(|e| ApplicationError::Repository(e.to_string()))?
+            .ok_or_else(|| ApplicationError::NotFound("Mission not found".into()))
+    }
 }
