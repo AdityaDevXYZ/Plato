@@ -11,3 +11,4 @@ time.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 async-trait.workspace = true
+sgp4 = "2.4"

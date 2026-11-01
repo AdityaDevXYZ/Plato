@@ -27,7 +27,7 @@ tracing-opentelemetry = "0.23"
 thiserror = "1.0"
 anyhow = "1.0"
 uuid = { version = "1.8", features = ["v4", "serde"] }
-time = { version = "0.3", features = ["serde"] }
+time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
 utoipa = { version = "4.2", features = ["axum_extras"] }
 async-trait = "0.1"
 tower-http = { version = "0.5", features = ["cors", "trace"] }

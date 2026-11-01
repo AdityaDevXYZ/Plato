@@ -220,7 +220,13 @@ async fn main() -> anyhow::Result<()> {
 
     let orbit_routes = Router::new()
         .route("/satellites/:id", get(orbit_handlers::get_orbit))
+        .route("/satellites/:id/tle", post(orbit_handlers::set_tle))
         .route("/satellites/:id/prediction", get(orbit_handlers::get_prediction))
+        .route("/satellites/:id/look-angles", get(orbit_handlers::get_look_angles))
+        .route("/satellites/:id/passes", get(orbit_handlers::get_passes))
+        .route("/satellites/:id/nearby", get(orbit_handlers::get_nearby))
+        .route("/satellites/:id/formation", get(orbit_handlers::get_formation))
+        .route("/ground-stations", get(orbit_handlers::get_ground_stations))
         .route("/windows", get(orbit_handlers::get_windows))
         .layer(TraceLayer::new_for_http());
 

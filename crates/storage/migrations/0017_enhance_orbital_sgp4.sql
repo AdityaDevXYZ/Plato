@@ -1,0 +1,38 @@
+-- Migration 0017: True SGP4 Astrodynamics & Ground Stations
+ALTER TABLE satellite_orbits
+ADD COLUMN IF NOT EXISTS tle_line1 VARCHAR(128),
+ADD COLUMN IF NOT EXISTS tle_line2 VARCHAR(128),
+ADD COLUMN IF NOT EXISTS epoch TIMESTAMPTZ,
+ADD COLUMN IF NOT EXISTS norad_id INTEGER,
+ADD COLUMN IF NOT EXISTS semi_major_axis_km DOUBLE PRECISION,
+ADD COLUMN IF NOT EXISTS eccentricity DOUBLE PRECISION,
+ADD COLUMN IF NOT EXISTS inclination_deg DOUBLE PRECISION,
+ADD COLUMN IF NOT EXISTS raan_deg DOUBLE PRECISION,
+ADD COLUMN IF NOT EXISTS arg_of_perigee_deg DOUBLE PRECISION,
+ADD COLUMN IF NOT EXISTS mean_anomaly_deg DOUBLE PRECISION,
+ADD COLUMN IF NOT EXISTS mean_motion_revs_per_day DOUBLE PRECISION,
+ADD COLUMN IF NOT EXISTS bstar DOUBLE PRECISION,
+ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION,
+ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION,
+ADD COLUMN IF NOT EXISTS altitude_km DOUBLE PRECISION,
+ADD COLUMN IF NOT EXISTS last_propagated_at TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS ground_stations (
+    id UUID PRIMARY KEY,
+    name VARCHAR(128) NOT NULL,
+    latitude DOUBLE PRECISION NOT NULL,
+    longitude DOUBLE PRECISION NOT NULL,
+    altitude_m DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    min_elevation_deg DOUBLE PRECISION NOT NULL DEFAULT 5.0,
+    status VARCHAR(32) NOT NULL DEFAULT 'Active',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Pre-seed global tracking ground stations for commercial passes
+INSERT INTO ground_stations (id, name, latitude, longitude, altitude_m, min_elevation_deg, status)
+VALUES 
+    ('11111111-1111-1111-1111-111111111111', 'Svalbard Polar Station', 78.2297, 15.4077, 450.0, 5.0, 'Active'),
+    ('22222222-2222-2222-2222-222222222222', 'US-West Ground Station (California)', 37.4275, -122.1697, 30.0, 5.0, 'Active'),
+    ('33333333-3333-3333-3333-333333333333', 'Kourou Space Centre (French Guiana)', 5.2514, -52.8047, 15.0, 5.0, 'Active'),
+    ('44444444-4444-4444-4444-444444444444', 'Perth Deep Space Ground Station', -31.8028, 115.8860, 25.0, 5.0, 'Active')
+ON CONFLICT (id) DO NOTHING;
