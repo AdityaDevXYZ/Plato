@@ -11,6 +11,7 @@ pub mod risk_handlers;
 pub mod coordination_handlers;
 pub mod analytics_handlers;
 pub mod entity_handlers;
+pub mod ws_handlers;
 
 use axum::{routing::{get, post}, Router, Json, extract::State, middleware::from_fn_with_state};
 use serde_json::{json, Value};
@@ -26,7 +27,6 @@ use storage::{
     readiness::SqlxReadinessRepository,
     deployment::SqlxDeploymentRepository,
     outbox::SqlxOutboxRepository,
-    idempotency::SqlxIdempotencyStore,
     twin::SqlxDigitalTwinRepository,
     orbit::SqlxOrbitRepository,
     planning::SqlxPlanningRepository,
@@ -139,6 +139,7 @@ async fn main() -> anyhow::Result<()> {
     let proj_repo = Arc::new(SqlxProjectRepository::new(pool.clone()));
     let mission_repo = Arc::new(SqlxMissionRepository::new(pool.clone()));
     let release_repo = Arc::new(SqlxReleaseRepository::new(pool.clone()));
+    let (telemetry_tx, _) = tokio::sync::broadcast::channel(1024);
 
     let app_state = AppState {
         config: Arc::new(settings.clone()),
@@ -160,6 +161,7 @@ async fn main() -> anyhow::Result<()> {
         analytics_service,
         user_service: Arc::new(UserService::new(user_repo.clone())),
         auth_service: Arc::new(AuthenticationService::new(user_repo, event_publisher.clone(), settings.app.jwt_secret.clone())),
+        telemetry_tx,
     };
 
     let roe_routes = Router::new()
@@ -211,6 +213,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/satellites", get(twin_handlers::list_satellites).post(twin_handlers::register_satellite))
         .route("/satellites/:id", get(twin_handlers::get_satellite))
         .route("/satellites/:id/telemetry", post(twin_handlers::ingest_telemetry))
+        .route("/satellites/:id/telemetry/history", get(twin_handlers::get_telemetry_history))
         .route("/satellites/unhealthy", get(twin_handlers::get_unhealthy))
         .route("/missions/:id", get(twin_handlers::get_mission_assets))
         .layer(TraceLayer::new_for_http());
@@ -258,13 +261,23 @@ async fn main() -> anyhow::Result<()> {
         .route("/health/ready", get(health_handlers::readiness))
         .route("/status", get(health_handlers::status))
         .route("/health", get(health_check))
+        .route("/api/v1/telemetry/stream", get(ws_handlers::telemetry_stream_handler))
+        .route("/api/v1/ws/telemetry", get(ws_handlers::telemetry_stream_handler))
         .nest("/api/v1/auth", auth_routes)
         .nest("/api/v1/organizations", org_routes)
         .nest("/api/v1/projects", project_routes)
         .nest("/api/v1/missions", mission_routes)
         .nest("/api/v1/releases", roe_routes)
         .nest("/api/v1/deployments", dee_routes)
-        .nest("/api/v1/twin", twin_routes)
+        .nest("/api/v1/twin", twin_routes.clone())
+        .nest("/api/v1/satellites", Router::new()
+            .route("/", get(twin_handlers::list_satellites).post(twin_handlers::register_satellite))
+            .route("/:id", get(twin_handlers::get_satellite))
+            .route("/:id/telemetry", post(twin_handlers::ingest_telemetry))
+            .route("/:id/telemetry/history", get(twin_handlers::get_telemetry_history))
+            .route("/unhealthy", get(twin_handlers::get_unhealthy))
+            .layer(TraceLayer::new_for_http())
+        )
         .nest("/api/v1/orbits", orbit_routes)
         .nest("/api/v1/plans", plan_routes)
         .nest("/api/v1/resources", resource_routes)

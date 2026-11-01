@@ -1,4 +1,4 @@
-use crate::model::Satellite;
+use crate::model::{Satellite, TelemetryRecord};
 use types::MissionId;
 use async_trait::async_trait;
 use thiserror::Error;
@@ -19,4 +19,6 @@ pub trait TwinRepository: Send + Sync {
     async fn get_unhealthy_satellites(&self, threshold: u8) -> Result<Vec<Satellite>, RepositoryError>;
     async fn get_online_satellites(&self) -> Result<Vec<Satellite>, RepositoryError>;
     async fn get_deployable_satellites(&self) -> Result<Vec<Satellite>, RepositoryError>;
+    async fn record_telemetry(&self, record: &TelemetryRecord) -> Result<(), RepositoryError>;
+    async fn get_telemetry_history(&self, satellite_id: Uuid, limit: i64) -> Result<Vec<TelemetryRecord>, RepositoryError>;
 }
