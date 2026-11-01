@@ -545,9 +545,9 @@ cargo fmt --all -- --check
 
 ---
 
-## YC Thesis & Roadmap: The Path to Constellation Autonomy
+## Product Vision & Roadmap: The Path to Constellation Autonomy
 
-Space exploration and commercial orbital infrastructure are undergoing the same transformation computing underwent 25 years ago: moving from custom mainframes to scalable, networked cloud clusters. 
+Space exploration and commercial orbital infrastructure are undergoing the same transformation computing underwent 25 years ago: moving from custom mainframes to scalable, networked cloud clusters.
 
 PLATO is positioning itself as **the standard software delivery backbone for commercial space**:
 
