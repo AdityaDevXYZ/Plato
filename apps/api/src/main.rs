@@ -82,9 +82,9 @@ async fn main() -> anyhow::Result<()> {
     
     let assurance_repo = Arc::new(SqlxAssuranceRepository::new(pool.clone()));
     let checks: Vec<std::sync::Arc<dyn assurance::pipeline::AssuranceCheck>> = vec![
-        Arc::new(assurance::mock_checks::ArtifactIntegrityCheck),
-        Arc::new(assurance::mock_checks::SignatureVerificationCheck),
-        Arc::new(assurance::mock_checks::PolicyComplianceCheck { should_fail: false }),
+        Arc::new(assurance::checks::ArtifactIntegrityCheck),
+        Arc::new(assurance::checks::SignatureVerificationCheck),
+        Arc::new(assurance::checks::FlightSafetyComplianceCheck),
     ];
     let assurance_pipeline = Arc::new(assurance::pipeline::AssurancePipeline::new(checks));
     
@@ -148,7 +148,7 @@ async fn main() -> anyhow::Result<()> {
         project_service: Arc::new(ProjectService::new(proj_repo)),
         mission_service: Arc::new(MissionService::new(mission_repo)),
         roe_service: Arc::new(ReleaseOrchestrationService::new(release_repo, event_publisher.clone())),
-        rae_service: Arc::new(ReleaseAssuranceService::new(assurance_pipeline, assurance_repo, event_publisher.clone())),
+        rae_service: Arc::new(ReleaseAssuranceService::new(assurance_pipeline, assurance_repo.clone(), assurance_repo.clone(), event_publisher.clone())),
         dra_service: Arc::new(DeploymentReadinessService::new(readiness_pipeline, readiness_repo, event_publisher.clone())),
         dee_service: deployment_service,
         twin_query,
@@ -168,6 +168,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/", post(roe_handlers::create_release))
         .route("/:id", get(roe_handlers::get_release))
         .route("/:id/history", get(roe_handlers::get_history))
+        .route("/:id/manifest", post(roe_handlers::create_release_manifest))
+        .route("/:id/manifest", get(roe_handlers::get_release_manifest))
         .route("/:id/validate", post(roe_handlers::validate_release))
         .route("/:id/submit", post(roe_handlers::submit_release))
         .route("/:id/approve", post(roe_handlers::approve_release))

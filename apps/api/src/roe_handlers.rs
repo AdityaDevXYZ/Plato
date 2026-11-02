@@ -6,7 +6,7 @@ use uuid::Uuid;
 use axum::http::StatusCode;
 use types::{ReleaseId, MissionId, UserId};
 use release::model::TransitionRecord;
-use assurance::model::{AssuranceReport, AssuranceDecision};
+use assurance::model::{AssuranceReport, AssuranceDecision, FlightReleaseManifest, BinaryArtifact, CryptographicSignature};
 use readiness::model::{DeploymentReadinessReport, ReadinessDecision};
 use deployment::model::{DeploymentSession, DeploymentState, LogEntry};
 
@@ -50,6 +50,78 @@ pub async fn get_release(State(state): State<AppState>, Path(id): Path<Uuid>) ->
 pub async fn get_history(State(state): State<AppState>, Path(id): Path<Uuid>) -> Result<Json<Vec<TransitionRecord>>, StatusCode> {
     let r = state.roe_service.get_release(id.into()).await.map_err(|_| StatusCode::NOT_FOUND)?;
     Ok(Json(r.history().to_vec()))
+}
+
+#[derive(Deserialize)]
+pub struct BinaryArtifactReq {
+    pub artifact_id: Option<Uuid>,
+    pub name: String,
+    pub target_partition: String,
+    pub size_bytes: u64,
+    pub expected_sha256: String,
+    pub payload_hex: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct CryptographicSignatureReq {
+    pub signer_id: String,
+    pub algorithm: String,
+    pub public_key_hex: String,
+    pub signature_hex: String,
+}
+
+#[derive(Deserialize)]
+pub struct CreateManifestReq {
+    pub version: String,
+    pub target_architecture: String,
+    pub max_binary_size_bytes: Option<u64>,
+    pub dual_bank_enabled: Option<bool>,
+    pub artifacts: Vec<BinaryArtifactReq>,
+    pub signatures: Vec<CryptographicSignatureReq>,
+}
+
+pub async fn create_release_manifest(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<CreateManifestReq>,
+) -> Result<Json<FlightReleaseManifest>, StatusCode> {
+    let artifacts = req.artifacts.into_iter().map(|a| BinaryArtifact {
+        artifact_id: a.artifact_id.unwrap_or_else(Uuid::new_v4),
+        name: a.name,
+        target_partition: a.target_partition,
+        size_bytes: a.size_bytes,
+        expected_sha256: a.expected_sha256,
+        payload_hex: a.payload_hex,
+    }).collect();
+
+    let signatures = req.signatures.into_iter().map(|s| CryptographicSignature {
+        signer_id: s.signer_id,
+        algorithm: s.algorithm,
+        public_key_hex: s.public_key_hex,
+        signature_hex: s.signature_hex,
+    }).collect();
+
+    let manifest = FlightReleaseManifest {
+        release_id: id.into(),
+        version: req.version,
+        target_architecture: req.target_architecture,
+        max_binary_size_bytes: req.max_binary_size_bytes.unwrap_or(33554432),
+        dual_bank_enabled: req.dual_bank_enabled.unwrap_or(true),
+        artifacts,
+        signatures,
+        created_at: time::OffsetDateTime::now_utc(),
+    };
+
+    state.rae_service.save_manifest(&manifest).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(manifest))
+}
+
+pub async fn get_release_manifest(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<FlightReleaseManifest>, StatusCode> {
+    let manifest = state.rae_service.get_manifest(id.into()).await.map_err(|_| StatusCode::NOT_FOUND)?;
+    Ok(Json(manifest))
 }
 
 pub async fn assure_release(State(state): State<AppState>, Path(id): Path<Uuid>, Extension(claims): Extension<Claims>) -> Result<Json<AssuranceReport>, StatusCode> {
