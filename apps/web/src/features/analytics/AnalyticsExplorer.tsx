@@ -4,10 +4,15 @@ import { Select } from "@/components/ui/select"
 import { Search, Filter, FileText, BarChart3, PieChart, Activity } from 'lucide-react'
 import { useState } from 'react'
 import { AnalyticsReports } from '@/lib/analytics-mock-data'
+import { useAnalyticsReports } from '@/hooks/queries/useAdminQueries'
 import { cn } from '@/lib/utils'
 
 export function AnalyticsExplorer({ onSelect, selectedId }: { onSelect: (id: string) => void, selectedId: string | null }) {
   const [search, setSearch] = useState('');
+  const [timeRange, setTimeRange] = useState('ytd');
+  const { data: liveReports } = useAnalyticsReports(timeRange);
+
+  const reports = liveReports && liveReports.length > 0 ? liveReports : AnalyticsReports;
 
   return (
     <div className="flex flex-col h-full bg-card border-r">
@@ -31,7 +36,7 @@ export function AnalyticsExplorer({ onSelect, selectedId }: { onSelect: (id: str
         <div className="space-y-2">
           <label className="text-xs font-medium text-muted-foreground">Time Range</label>
           <div className="relative">
-            <Select defaultValue="ytd">
+            <Select value={timeRange} onChange={(e) => setTimeRange(e.target.value)}>
               <option value="ytd">Year to Date</option>
               <option value="q2">Q2 2026</option>
               <option value="last30">Last 30 Days</option>
@@ -55,7 +60,7 @@ export function AnalyticsExplorer({ onSelect, selectedId }: { onSelect: (id: str
       
       <div className="flex-1 overflow-y-auto p-2">
         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-2">Saved Reports</h3>
-        {AnalyticsReports.filter(r => r.name.toLowerCase().includes(search.toLowerCase())).map(report => (
+        {reports.filter((r: any) => r.name.toLowerCase().includes(search.toLowerCase())).map((report: any) => (
           <button
             key={report.id}
             onClick={() => onSelect(report.id)}

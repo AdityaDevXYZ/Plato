@@ -1,11 +1,34 @@
 'use client';
-import { FleetData } from '@/lib/twin-mock-data'
+import { useMemo, useState } from 'react'
+import { FleetData as FallbackFleetData } from '@/lib/twin-mock-data'
 import { cn } from '@/lib/utils'
 import { Satellite, Radio } from 'lucide-react'
+import { useFleetExplorer } from '@/hooks/queries/useTwinQueries'
+import { useRealtimeSubscription } from '@/hooks/useRealtime'
 
 export function FleetVisualization({ onSelectAsset, selectedAssetId }: { onSelectAsset: (asset: any) => void, selectedAssetId: string | null }) {
-  
-  const allAssets = FleetData.flatMap(g => g.assets);
+  const { data: liveFleet } = useFleetExplorer();
+  const [realtimeOverrides, setRealtimeOverrides] = useState<Record<string, any>>({});
+
+  useRealtimeSubscription<any>('telemetry:stream', (msg) => {
+    if (msg?.satellite?.id) {
+      setRealtimeOverrides(prev => ({
+        ...prev,
+        [msg.satellite.id]: {
+          status: msg.anomalies?.length ? 'Warning' : 'Nominal',
+          health: msg.satellite.health_score,
+        }
+      }));
+    }
+  });
+
+  const allAssets = useMemo(() => {
+    const base = (liveFleet && liveFleet.length > 0) ? liveFleet : FallbackFleetData;
+    return base.flatMap((g: any) => g.assets).map((asset: any) => ({
+      ...asset,
+      ...(realtimeOverrides[asset.id] || {}),
+    }));
+  }, [liveFleet, realtimeOverrides]);
 
   const getStatusColor = (status: string) => {
     if (status === 'Critical') return 'text-destructive shadow-destructive/50';
@@ -19,7 +42,7 @@ export function FleetVisualization({ onSelectAsset, selectedAssetId }: { onSelec
       
       <div className="absolute top-4 left-4 z-10">
         <h2 className="font-semibold text-lg drop-shadow-md">Global Constellation View</h2>
-        <p className="text-sm text-muted-foreground">Interactive 2D Spatial Layout</p>
+        <p className="text-sm text-muted-foreground">Interactive 2D Spatial Orbital Layout • {allAssets.length} Assets Tracked</p>
       </div>
 
       <div className="relative w-full max-w-2xl aspect-square border border-border/50 rounded-full bg-card/20 backdrop-blur-sm animate-in zoom-in duration-700">
@@ -29,7 +52,7 @@ export function FleetVisualization({ onSelectAsset, selectedAssetId }: { onSelec
           </div>
         </div>
 
-        {allAssets.map((asset) => {
+        {allAssets.map((asset: any) => {
           const isSelected = selectedAssetId === asset.id;
           return (
             <button
@@ -40,7 +63,7 @@ export function FleetVisualization({ onSelectAsset, selectedAssetId }: { onSelec
                 isSelected && "bg-accent ring-2 ring-primary scale-125 z-20"
               )}
               style={{ left: `${asset.x}%`, top: `${asset.y}%` }}
-              title={asset.name}
+              title={`${asset.name} (${asset.status})`}
             >
               <div className={cn("relative shadow-lg rounded-full", getStatusColor(asset.status))}>
                 {asset.type === 'Satellite' ? <Satellite className="h-5 w-5" /> : <Radio className="h-5 w-5" />}

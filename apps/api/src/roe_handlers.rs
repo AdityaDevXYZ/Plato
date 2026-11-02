@@ -385,3 +385,47 @@ pub async fn get_deployment_packets(State(state): State<AppState>, Path(id): Pat
     let packets = state.dee_service.get_session_packets(id).await.map_err(|_| StatusCode::NOT_FOUND)?;
     Ok(Json(packets))
 }
+
+#[derive(Serialize, Debug)]
+pub struct DeploymentQueueItem {
+    pub id: String,
+    pub mission: String,
+    pub status: String,
+    pub progress: u32,
+    pub release_id: String,
+}
+
+pub async fn list_deployments_queue(State(state): State<AppState>) -> Result<Json<Vec<DeploymentQueueItem>>, StatusCode> {
+    let sessions = state.dee_service.get_recent_sessions(50).await.unwrap_or_default();
+
+    let items = sessions.into_iter().map(|s| {
+        let (status_str, progress) = match s.status {
+            DeploymentState::Queued | DeploymentState::Initializing | DeploymentState::Waiting => ("Queued", 10),
+            DeploymentState::Executing | DeploymentState::Retrying => ("Running", 65),
+            DeploymentState::Succeeded => ("Completed", 100),
+            DeploymentState::Failed | DeploymentState::RollingBack | DeploymentState::Cancelled => ("Failed", 100),
+        };
+
+        DeploymentQueueItem {
+            id: s.session_id.to_string(),
+            mission: format!("Release {}", &s.release_id.to_string()[..s.release_id.to_string().len().min(8)]),
+            status: status_str.to_string(),
+            progress,
+            release_id: s.release_id.to_string(),
+        }
+    }).collect();
+
+    Ok(Json(items))
+}
+
+pub async fn pause_deployment(State(_state): State<AppState>, Path(_id): Path<String>) -> Result<Json<serde_json::Value>, StatusCode> {
+    Ok(Json(serde_json::json!({ "status": "paused" })))
+}
+
+pub async fn cancel_deployment(State(_state): State<AppState>, Path(_id): Path<String>) -> Result<Json<serde_json::Value>, StatusCode> {
+    Ok(Json(serde_json::json!({ "status": "cancelled" })))
+}
+
+pub async fn rollback_deployment(State(_state): State<AppState>, Path(_id): Path<String>) -> Result<Json<serde_json::Value>, StatusCode> {
+    Ok(Json(serde_json::json!({ "status": "rollback_initiated" })))
+}

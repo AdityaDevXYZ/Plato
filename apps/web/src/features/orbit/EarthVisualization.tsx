@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { OrbitalData } from '@/lib/orbit-mock-data';
+import { useFleetExplorer, useOrbitalPositions } from '@/hooks/queries/useTwinQueries';
 import { Slider } from '@/components/ui/slider';
 import { ZoomIn, ZoomOut, RotateCcw, Satellite, Radio, Crosshair, Layers } from 'lucide-react';
 
@@ -37,9 +38,33 @@ export function EarthVisualization({
 
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const { data: liveFleet } = useFleetExplorer();
+  const { data: livePositions } = useOrbitalPositions();
+
   const allAssets = useMemo(() => {
-    return OrbitalData.flatMap((g) => g.assets) as Asset[];
-  }, []);
+    if (!liveFleet || liveFleet.length === 0) {
+      return OrbitalData.flatMap((g) => g.assets) as Asset[];
+    }
+    const posMap = new Map((livePositions || []).map((p: any) => [p.id, p]));
+    return liveFleet.flatMap((g: any) => (g.assets || []).map((asset: any) => {
+      const pos = posMap.get(asset.id);
+      return {
+        id: asset.id,
+        name: asset.name,
+        type: asset.type || 'Satellite',
+        status: asset.status || 'Nominal',
+        lat: pos ? Number(pos.lat.toFixed(2)) : 34.05,
+        lng: pos ? Number(pos.lon.toFixed(2)) : -118.24,
+        alt: pos ? `${Math.round(pos.alt_km)}km` : '550km',
+        vel: pos ? `${pos.velocity_kms.toFixed(1)} km/s` : '7.5 km/s',
+        period: '95m',
+        inc: '53°',
+        nextWindow: '14m',
+        confidence: 99.8,
+        ...asset,
+      } as Asset;
+    }));
+  }, [liveFleet, livePositions]);
 
   // Compute dynamic positions based on time offset (sine orbital track simulation)
   const currentAssets = useMemo(() => {

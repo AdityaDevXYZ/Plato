@@ -9,17 +9,36 @@ export class ApiError extends Error {
   }
 }
 
-let accessToken: string | null = null;
-export const setAccessToken = (token: string | null) => { accessToken = token; };
+let accessToken: string | null = typeof window !== 'undefined' ? localStorage.getItem('plato_token') : null;
+export const setAccessToken = (token: string | null) => {
+  accessToken = token;
+  if (typeof window !== 'undefined') {
+    if (token) {
+      localStorage.setItem('plato_token', token);
+    } else {
+      localStorage.removeItem('plato_token');
+    }
+  }
+};
 
 async function refreshAccessToken(): Promise<boolean> {
-  // Mock token refresh logic
+  if (!accessToken) return false;
   try {
-    const res = await fetch(`${config.api.baseUrl}/auth/refresh`, { method: 'POST' });
+    const res = await fetch(`${config.api.baseUrl}/auth/refresh`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    });
     if (!res.ok) return false;
     const data = await res.json();
-    setAccessToken(data.accessToken);
-    return true;
+    const token = data.token || data.accessToken;
+    if (token) {
+      setAccessToken(token);
+      return true;
+    }
+    return false;
   } catch {
     return false;
   }
