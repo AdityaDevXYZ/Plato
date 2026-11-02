@@ -1,22 +1,36 @@
+# Multi-stage production build for PLATO Mission Control Web Frontend (Next.js 14)
+FROM node:20-alpine AS deps
+WORKDIR /app
+COPY apps/web/package.json apps/web/package-lock.json* ./
+RUN npm ci
 
 FROM node:20-alpine AS builder
 WORKDIR /app
-# Install dependencies
-COPY package.json package-lock.json ./
-RUN npm ci
-# Build Next.js app
-COPY . .
-RUN npm run build --workspace=apps/web
+COPY --from=deps /app/node_modules ./node_modules
+COPY apps/web ./
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
+RUN npm run build
 
 FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
-# Next.js telemetry disable
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
 
-COPY --from=builder /app/apps/web/public ./public
-COPY --from=builder /app/apps/web/.next/standalone ./
-COPY --from=builder /app/apps/web/.next/static ./.next/static
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+
+USER nextjs
 
 EXPOSE 3000
-CMD ["node", "server.js"]
+
+HEALTHCHECK --interval=15s --timeout=5s --retries=3 --start-period=10s \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1
+
+CMD ["npm", "start"]

@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: plato-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-plato}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-plato_secret_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-plato}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - plato-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-plato} -d ${POSTGRES_DB:-plato}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - plato-net
+
+  plato-api:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/backend.Dockerfile
+    container_name: plato-api
+    restart: unless-stopped
+    command: ["plato-api"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-plato}:${POSTGRES_PASSWORD:-plato_secret_dev}@postgres:5432/${POSTGRES_DB:-plato}
+      PLATO__DB__URL: postgres://${POSTGRES_USER:-plato}:${POSTGRES_PASSWORD:-plato_secret_dev}@postgres:5432/${POSTGRES_DB:-plato}
+      PLATO__APP__NAME: "PLATO Mission Control API"
+      PLATO__APP__VERSION: "1.0.0"
+      PLATO__APP__JWT_SECRET: ${JWT_SECRET:-production_enterprise_jwt_secret_change_me_0123456789abcdef}
+      PLATO__SERVER__HOST: "0.0.0.0"
+      PLATO__SERVER__PORT: 8080
+      RUST_LOG: "info,api=debug"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - plato-net
+
+  plato-worker:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/backend.Dockerfile
+    container_name: plato-worker
+    restart: unless-stopped
+    command: ["plato-worker"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-plato}:${POSTGRES_PASSWORD:-plato_secret_dev}@postgres:5432/${POSTGRES_DB:-plato}
+      PLATO__DB__URL: postgres://${POSTGRES_USER:-plato}:${POSTGRES_PASSWORD:-plato_secret_dev}@postgres:5432/${POSTGRES_DB:-plato}
+      RUST_LOG: "info,worker=debug"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      plato-api:
+        condition: service_healthy
+    networks:
+      - plato-net
+
+  plato-web:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/frontend.Dockerfile
+    container_name: plato-web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080/api/v1}
+      NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:8080/ws}
+    ports:
+      - "3000:3000"
+    depends_on:
+      plato-api:
+        condition: service_healthy
+    networks:
+      - plato-net
+
+volumes:
+  plato-pgdata:
+    driver: local
+
+networks:
+  plato-net:
+    driver: bridge
