@@ -9,5 +9,10 @@ eventbus = { path = "../eventbus" }
 uuid.workspace = true
 time.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 async-trait.workspace = true
+hex = "0.4"
+
+[dev-dependencies]
+tokio = { workspace = true }

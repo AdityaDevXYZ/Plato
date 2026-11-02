@@ -8,7 +8,7 @@ use types::{ReleaseId, MissionId, UserId};
 use release::model::TransitionRecord;
 use assurance::model::{AssuranceReport, AssuranceDecision, FlightReleaseManifest, BinaryArtifact, CryptographicSignature};
 use readiness::model::{DeploymentReadinessReport, ReadinessDecision};
-use deployment::model::{DeploymentSession, DeploymentState, LogEntry};
+use deployment::model::{DeploymentSession, DeploymentState, LogEntry, TelecommandPacket};
 
 #[derive(Deserialize)]
 pub struct CreateReleaseReq { pub version: String, pub mission_id: Uuid }
@@ -164,21 +164,40 @@ pub async fn get_readiness(State(state): State<AppState>, Path(id): Path<Uuid>) 
     Ok(Json(report))
 }
 
-pub async fn deploy_release(State(state): State<AppState>, Path(id): Path<Uuid>, Extension(claims): Extension<Claims>) -> Result<Json<DeploymentSession>, StatusCode> {
+pub async fn deploy_release(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Extension(claims): Extension<Claims>,
+) -> Result<(StatusCode, Json<DeploymentSession>), StatusCode> {
     let corr_id = Uuid::new_v4();
     let actor = get_user_id(&claims);
     
-    let _ = state.roe_service.begin_deployment(id.into(), actor, corr_id, "Deployment starting".into()).await.map_err(|_| StatusCode::BAD_REQUEST)?;
+    let _ = state.roe_service.begin_deployment(id.into(), actor, corr_id, "Deployment starting".into())
+        .await.map_err(|_| StatusCode::BAD_REQUEST)?;
     
-    let session = state.dee_service.execute_deployment(id.into(), corr_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    
-    if session.status == DeploymentState::Succeeded {
-        let _ = state.roe_service.complete_deployment(id.into(), actor, corr_id, "Deployment completed".into()).await;
-    } else {
-        let _ = state.roe_service.fail_release(id.into(), actor, corr_id, "Deployment failed".into()).await;
-    }
+    let session = state.dee_service.queue_deployment(id.into(), corr_id, None, Some("bank_a".to_string()))
+        .await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok(Json(session))
+    let dee = state.dee_service.clone();
+    let roe = state.roe_service.clone();
+    let sess_id = session.session_id;
+
+    tokio::spawn(async move {
+        match dee.execute_session(sess_id).await {
+            Ok(s) => {
+                if s.status == DeploymentState::Succeeded {
+                    let _ = roe.complete_deployment(id.into(), actor, corr_id, "Deployment completed".into()).await;
+                } else {
+                    let _ = roe.fail_release(id.into(), actor, corr_id, "Deployment failed".into()).await;
+                }
+            }
+            Err(e) => {
+                let _ = roe.fail_release(id.into(), actor, corr_id, format!("Deployment error: {}", e)).await;
+            }
+        }
+    });
+
+    Ok((StatusCode::ACCEPTED, Json(session)))
 }
 
 pub async fn get_deployment(State(state): State<AppState>, Path(id): Path<Uuid>) -> Result<Json<DeploymentSession>, StatusCode> {
@@ -189,4 +208,9 @@ pub async fn get_deployment(State(state): State<AppState>, Path(id): Path<Uuid>)
 pub async fn get_deployment_logs(State(state): State<AppState>, Path(id): Path<Uuid>) -> Result<Json<Vec<LogEntry>>, StatusCode> {
     let session = state.dee_service.get_session(id).await.map_err(|_| StatusCode::NOT_FOUND)?;
     Ok(Json(session.execution_log))
+}
+
+pub async fn get_deployment_packets(State(state): State<AppState>, Path(id): Path<Uuid>) -> Result<Json<Vec<TelecommandPacket>>, StatusCode> {
+    let packets = state.dee_service.get_session_packets(id).await.map_err(|_| StatusCode::NOT_FOUND)?;
+    Ok(Json(packets))
 }
