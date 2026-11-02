@@ -12,6 +12,7 @@ pub mod coordination_handlers;
 pub mod analytics_handlers;
 pub mod entity_handlers;
 pub mod ws_handlers;
+pub mod genesis;
 
 use axum::{routing::{get, post}, Router, Json, extract::State, middleware::from_fn_with_state};
 use serde_json::{json, Value};
@@ -100,14 +101,14 @@ async fn main() -> anyhow::Result<()> {
     
     let deployment_repo = Arc::new(SqlxDeploymentRepository::new(pool.clone()));
     let dep_steps: Vec<std::sync::Arc<dyn deployment::pipeline::DeploymentStep>> = vec![
-        Arc::new(deployment::mock_steps::PreDeploymentValidation::default()),
-        Arc::new(deployment::mock_steps::PackagePreparation::default()),
-        Arc::new(deployment::mock_steps::TargetSelection::default()),
-        Arc::new(deployment::mock_steps::DeploymentExecution::default()),
-        Arc::new(deployment::mock_steps::PostDeploymentVerification::default()),
+        Arc::new(deployment::steps::PreDeploymentValidation::default()),
+        Arc::new(deployment::steps::PackagePreparation::default()),
+        Arc::new(deployment::steps::TargetSelection::default()),
+        Arc::new(deployment::steps::DeploymentExecution::default()),
+        Arc::new(deployment::steps::PostDeploymentVerification::default()),
     ];
-    let rollback_strat = Arc::new(deployment::mock_steps::MockRollbackStrategy);
-    let deployment_service = Arc::new(DeploymentExecutionService::new(dep_steps, rollback_strat, deployment_repo, event_publisher.clone()));
+    let rollback_strat = Arc::new(deployment::steps::DualBankRollbackStrategy);
+    let deployment_service = Arc::new(DeploymentExecutionService::new(dep_steps, rollback_strat, deployment_repo.clone(), event_publisher.clone()));
         
     let twin_repo = Arc::new(SqlxDigitalTwinRepository::new(pool.clone()));
     let twin_query = Arc::new(TwinQueryService::new(twin_repo.clone()));
@@ -142,6 +143,9 @@ async fn main() -> anyhow::Result<()> {
     let mission_repo = Arc::new(SqlxMissionRepository::new(pool.clone()));
     let release_repo = Arc::new(SqlxReleaseRepository::new(pool.clone()));
     let audit_repo = Arc::new(SqlxAuditRepository::new(pool.clone()));
+    if let Err(e) = genesis::bootstrap_genesis_if_needed(&pool).await {
+        tracing::warn!("Genesis bootstrap note: {:?}", e);
+    }
     let audit_service = Arc::new(AuditService::new(audit_repo.clone()));
     let auth_service = Arc::new(AuthenticationService::with_audit(
         user_repo.clone(),
