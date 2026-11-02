@@ -5,10 +5,15 @@ use identity::{
 };
 use types::Email;
 use std::sync::Arc;
+use policy::Role;
+use uuid::Uuid;
 
 pub struct CreateUserCommand {
     pub email: String,
     pub raw_password: Option<String>,
+    pub role: Option<Role>,
+    pub full_name: Option<String>,
+    pub organization_id: Option<Uuid>,
 }
 
 pub struct UserService {
@@ -25,7 +30,9 @@ impl UserService {
             .map_err(|e| ApplicationError::Domain(e.to_string()))?;
 
         let pass = command.raw_password.as_deref().unwrap_or("PlatoSecurePass123!");
-        let user = User::new(email, pass)
+        let assigned_role = command.role.unwrap_or(Role::Operator);
+        let full_name = command.full_name.unwrap_or_default();
+        let user = User::new(email, pass, assigned_role, full_name, command.organization_id)
             .map_err(|e| ApplicationError::Domain(format!("{:?}", e)))?;
 
         self.user_repo

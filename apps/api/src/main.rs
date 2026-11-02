@@ -40,10 +40,12 @@ use storage::{
     project::SqlxProjectRepository,
     mission::SqlxMissionRepository,
     release::SqlxReleaseRepository,
+    audit::SqlxAuditRepository,
 };
 
 use application::{
     auth::AuthenticationService,
+    audit::AuditService,
     roe::ReleaseOrchestrationService,
     assurance::ReleaseAssuranceService,
     readiness::DeploymentReadinessService,
@@ -139,6 +141,14 @@ async fn main() -> anyhow::Result<()> {
     let proj_repo = Arc::new(SqlxProjectRepository::new(pool.clone()));
     let mission_repo = Arc::new(SqlxMissionRepository::new(pool.clone()));
     let release_repo = Arc::new(SqlxReleaseRepository::new(pool.clone()));
+    let audit_repo = Arc::new(SqlxAuditRepository::new(pool.clone()));
+    let audit_service = Arc::new(AuditService::new(audit_repo.clone()));
+    let auth_service = Arc::new(AuthenticationService::with_audit(
+        user_repo.clone(),
+        event_publisher.clone(),
+        settings.app.jwt_secret.clone(),
+        audit_repo.clone(),
+    ));
     let (telemetry_tx, _) = tokio::sync::broadcast::channel(1024);
 
     let app_state = AppState {
@@ -160,7 +170,8 @@ async fn main() -> anyhow::Result<()> {
         coordination_service,
         analytics_service,
         user_service: Arc::new(UserService::new(user_repo.clone())),
-        auth_service: Arc::new(AuthenticationService::new(user_repo, event_publisher.clone(), settings.app.jwt_secret.clone())),
+        auth_service,
+        audit_service: audit_service.clone(),
         telemetry_tx,
     };
 
@@ -188,8 +199,10 @@ async fn main() -> anyhow::Result<()> {
 
     let auth_routes = Router::new()
         .route("/me", get(auth_handlers::me_handler))
+        .route("/refresh", post(auth_handlers::refresh_handler))
         .route_layer(from_fn_with_state(app_state.clone(), middleware::auth_middleware))
         .route("/login", post(auth_handlers::login_handler))
+        .route("/register", post(auth_handlers::register_handler))
         .route("/health", get(auth_handlers::health_handler));
 
     let outbox_repo = Arc::new(SqlxOutboxRepository::new(pool.clone()));
@@ -265,6 +278,16 @@ async fn main() -> anyhow::Result<()> {
         .route("/reliability", get(analytics_handlers::get_reliability))
         .layer(TraceLayer::new_for_http());
 
+    let audit_routes = Router::new()
+        .route("/", get(auth_handlers::get_audit_ledger_handler))
+        .route("/verify", get(auth_handlers::verify_audit_integrity_handler))
+        .route_layer(from_fn_with_state(app_state.clone(), middleware::auth_middleware));
+
+    let admin_routes = Router::new()
+        .route("/audit", get(auth_handlers::get_audit_ledger_handler))
+        .route("/audit/verify", get(auth_handlers::verify_audit_integrity_handler))
+        .route_layer(from_fn_with_state(app_state.clone(), middleware::auth_middleware));
+
     let app = Router::new()
         .route("/health/live", get(health_handlers::liveness))
         .route("/health/ready", get(health_handlers::readiness))
@@ -273,6 +296,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/telemetry/stream", get(ws_handlers::telemetry_stream_handler))
         .route("/api/v1/ws/telemetry", get(ws_handlers::telemetry_stream_handler))
         .nest("/api/v1/auth", auth_routes)
+        .nest("/api/v1/audit", audit_routes)
+        .nest("/api/v1/admin", admin_routes)
         .nest("/api/v1/organizations", org_routes)
         .nest("/api/v1/projects", project_routes)
         .nest("/api/v1/missions", mission_routes)

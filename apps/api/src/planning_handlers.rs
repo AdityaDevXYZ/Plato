@@ -1,8 +1,7 @@
 use axum::{Json, extract::{State, Path}, http::StatusCode};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use crate::state::AppState;
 use uuid::Uuid;
-use types::ReleaseId;
 use planning::{model::DeploymentPlan, strategy::{SequentialRollout, CanaryRollout, BatchRollout, PlanningStrategy}};
 
 #[derive(Debug, Deserialize)]

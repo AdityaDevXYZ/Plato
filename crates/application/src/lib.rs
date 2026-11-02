@@ -20,3 +20,4 @@ pub mod resource;
 pub mod risk;
 pub mod coordination;
 pub mod analytics;
+pub mod audit;

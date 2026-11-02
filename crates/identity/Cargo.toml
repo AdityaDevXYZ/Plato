@@ -5,6 +5,8 @@ edition.workspace = true
 
 [dependencies]
 types = { path = "../types" }
+policy = { path = "../policy" }
+uuid.workspace = true
 thiserror.workspace = true
 async-trait.workspace = true
 eventbus = { path = "../eventbus" }

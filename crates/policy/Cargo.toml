@@ -6,3 +6,4 @@ edition.workspace = true
 [dependencies]
 types = { path = "../types" }
 thiserror.workspace = true
+serde.workspace = true
