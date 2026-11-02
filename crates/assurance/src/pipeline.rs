@@ -6,6 +6,23 @@ use time::OffsetDateTime;
 
 pub struct AssuranceContext {
     pub release_id: ReleaseId,
+    pub manifest: Option<FlightReleaseManifest>,
+}
+
+impl AssuranceContext {
+    pub fn new(release_id: ReleaseId) -> Self {
+        Self {
+            release_id,
+            manifest: None,
+        }
+    }
+
+    pub fn with_manifest(release_id: ReleaseId, manifest: FlightReleaseManifest) -> Self {
+        Self {
+            release_id,
+            manifest: Some(manifest),
+        }
+    }
 }
 
 #[async_trait]
