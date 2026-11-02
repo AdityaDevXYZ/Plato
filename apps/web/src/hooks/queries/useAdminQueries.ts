@@ -29,3 +29,11 @@ export const useAuditLogs = () => {
     queryFn: () => apiClient<any[]>('/admin/audit'),
   });
 };
+
+export const useAuditVerify = () => {
+  return useQuery({
+    queryKey: ['admin', 'audit', 'verify'],
+    queryFn: () => apiClient<{ valid: boolean; status: string }>('/admin/audit/verify'),
+    refetchInterval: 15000,
+  });
+};

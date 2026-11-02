@@ -192,9 +192,14 @@ async fn main() -> anyhow::Result<()> {
         .route_layer(from_fn_with_state(app_state.clone(), middleware::auth_middleware));
 
     let dee_routes = Router::new()
+        .route("/", get(roe_handlers::list_deployments_queue))
+        .route("/queue", get(roe_handlers::list_deployments_queue))
         .route("/:id", get(roe_handlers::get_deployment))
         .route("/:id/logs", get(roe_handlers::get_deployment_logs))
         .route("/:id/packets", get(roe_handlers::get_deployment_packets))
+        .route("/:id/pause", post(roe_handlers::pause_deployment))
+        .route("/:id/cancel", post(roe_handlers::cancel_deployment))
+        .route("/:id/rollback", post(roe_handlers::rollback_deployment))
         .route_layer(from_fn_with_state(app_state.clone(), middleware::auth_middleware));
 
     let auth_routes = Router::new()
@@ -226,6 +231,8 @@ async fn main() -> anyhow::Result<()> {
         .route_layer(from_fn_with_state(app_state.clone(), middleware::auth_middleware));
 
     let twin_routes = Router::new()
+        .route("/fleet", get(twin_handlers::get_fleet_summary))
+        .route("/assets/:id", get(twin_handlers::get_asset_details))
         .route("/satellites", get(twin_handlers::list_satellites).post(twin_handlers::register_satellite))
         .route("/satellites/:id", get(twin_handlers::get_satellite))
         .route("/satellites/:id/telemetry", post(twin_handlers::ingest_telemetry))
@@ -235,6 +242,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(TraceLayer::new_for_http());
 
     let orbit_routes = Router::new()
+        .route("/positions", get(twin_handlers::get_orbital_positions))
         .route("/satellites/:id", get(orbit_handlers::get_orbit))
         .route("/satellites/:id/tle", post(orbit_handlers::set_tle))
         .route("/satellites/:id/prediction", get(orbit_handlers::get_prediction))
@@ -273,6 +281,8 @@ async fn main() -> anyhow::Result<()> {
         .layer(TraceLayer::new_for_http());
 
     let analytics_routes = Router::new()
+        .route("/kpis", get(analytics_handlers::get_kpis))
+        .route("/reports", get(analytics_handlers::get_reports))
         .route("/deployments", get(analytics_handlers::get_deployments))
         .route("/strategies", get(analytics_handlers::get_strategies))
         .route("/reliability", get(analytics_handlers::get_reliability))
@@ -284,6 +294,7 @@ async fn main() -> anyhow::Result<()> {
         .route_layer(from_fn_with_state(app_state.clone(), middleware::auth_middleware));
 
     let admin_routes = Router::new()
+        .route("/users", get(auth_handlers::list_users_handler))
         .route("/audit", get(auth_handlers::get_audit_ledger_handler))
         .route("/audit/verify", get(auth_handlers::verify_audit_integrity_handler))
         .route_layer(from_fn_with_state(app_state.clone(), middleware::auth_middleware));
@@ -293,6 +304,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/health/ready", get(health_handlers::readiness))
         .route("/status", get(health_handlers::status))
         .route("/health", get(health_check))
+        .route("/ws", get(ws_handlers::telemetry_stream_handler))
+        .route("/ws/telemetry", get(ws_handlers::telemetry_stream_handler))
         .route("/api/v1/telemetry/stream", get(ws_handlers::telemetry_stream_handler))
         .route("/api/v1/ws/telemetry", get(ws_handlers::telemetry_stream_handler))
         .nest("/api/v1/auth", auth_routes)
@@ -304,6 +317,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api/v1/releases", roe_routes)
         .nest("/api/v1/deployments", dee_routes)
         .nest("/api/v1/twin", twin_routes.clone())
+        .nest("/api/v1/orbital", orbit_routes.clone())
         .nest("/api/v1/satellites", Router::new()
             .route("/", get(twin_handlers::list_satellites).post(twin_handlers::register_satellite))
             .route("/:id", get(twin_handlers::get_satellite))

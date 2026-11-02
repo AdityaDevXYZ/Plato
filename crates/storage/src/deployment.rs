@@ -106,6 +106,24 @@ impl DeploymentSessionRepository for SqlxDeploymentRepository {
         Ok(sessions)
     }
 
+    async fn find_recent_sessions(&self, limit: i64) -> Result<Vec<DeploymentSession>, RepositoryError> {
+        let rows = sqlx::query_as::<_, SessionRow>(
+            "SELECT id, data FROM deployment_sessions ORDER BY created_at DESC LIMIT $1"
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| RepositoryError::Database(e.to_string()))?;
+
+        let mut sessions = Vec::with_capacity(rows.len());
+        for r in rows {
+            let s: DeploymentSession = serde_json::from_value(r.data)
+                .map_err(|e| RepositoryError::Database(e.to_string()))?;
+            sessions.push(s);
+        }
+        Ok(sessions)
+    }
+
     async fn save_telecommand_packets(&self, packets: &[TelecommandPacket]) -> Result<(), RepositoryError> {
         for packet in packets {
             let seq = packet.sequence_number as i32;

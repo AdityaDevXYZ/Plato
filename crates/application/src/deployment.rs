@@ -267,6 +267,15 @@ impl DeploymentExecutionService {
             .ok_or_else(|| ApplicationError::NotFound("Session not found".into()))
     }
 
+    /// Fetches recent deployment sessions for mission control queue
+    #[tracing::instrument(skip(self))]
+    pub async fn get_recent_sessions(&self, limit: i64) -> Result<Vec<DeploymentSession>, ApplicationError> {
+        self.session_repo
+            .find_recent_sessions(limit)
+            .await
+            .map_err(|e| ApplicationError::Repository(e.to_string()))
+    }
+
     /// Retrieves all generated telecommand frames for a session
     #[tracing::instrument(skip(self))]
     pub async fn get_session_packets(&self, session_id: Uuid) -> Result<Vec<TelecommandPacket>, ApplicationError> {

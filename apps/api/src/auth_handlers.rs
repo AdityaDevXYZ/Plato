@@ -157,3 +157,44 @@ pub async fn verify_audit_integrity_handler(
         "status": "Cryptographic SHA-256 hash chain verified"
     })))
 }
+
+#[derive(Serialize)]
+pub struct UserSummaryRes {
+    pub id: Uuid,
+    pub name: String,
+    pub email: String,
+    pub role: String,
+    pub status: String,
+    pub mfa: bool,
+    #[serde(rename = "lastLogin")]
+    pub last_login: String,
+}
+
+pub async fn list_users_handler(
+    State(state): State<AppState>,
+    Extension(_claims): Extension<Claims>,
+) -> Result<Json<Vec<UserSummaryRes>>, StatusCode> {
+    let users = state.user_service.list_users().await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let res = users.into_iter().map(|u| {
+        let email_str = u.email().as_str().to_string();
+        let display_name = if u.full_name().is_empty() {
+            email_str.split('@').next().unwrap_or("User").to_string()
+        } else {
+            u.full_name().to_string()
+        };
+
+        UserSummaryRes {
+            id: u.id().into(),
+            name: display_name,
+            email: email_str,
+            role: u.role().to_string(),
+            status: format!("{:?}", u.status()),
+            mfa: true,
+            last_login: "Just now".to_string(),
+        }
+    }).collect();
+
+    Ok(Json(res))
+}

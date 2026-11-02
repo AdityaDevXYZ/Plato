@@ -41,4 +41,11 @@ impl UserService {
 
         Ok(user)
     }
+
+    pub async fn list_users(&self) -> Result<Vec<User>, ApplicationError> {
+        self.user_repo
+            .find_all()
+            .await
+            .map_err(|e| ApplicationError::Repository(e.to_string()))
+    }
 }

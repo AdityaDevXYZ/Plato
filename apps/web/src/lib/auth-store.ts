@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { setAccessToken } from './api/client';
 
-export type Role = 'Administrator' | 'Mission Manager' | 'Operator' | 'Engineer' | 'Read Only';
+export type Role = 'Owner' | 'Administrator' | 'Mission Manager' | 'Operator' | 'Engineer' | 'Read Only' | 'Viewer';
 
 export interface UserSession {
   id: string;
@@ -16,10 +16,11 @@ export interface UserSession {
 
 interface AuthState {
   user: UserSession | null;
+  token: string | null;
   isAuthenticated: boolean;
   login: (user: UserSession, token: string) => void;
   logout: () => void;
-  hasRole: (role: Role) => boolean;
+  hasRole: (role: Role | string) => boolean;
   switchOrg: (orgId: string, orgName: string) => void;
 }
 
@@ -27,21 +28,21 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       user: null,
+      token: null,
       isAuthenticated: false,
       login: (user, token) => {
         setAccessToken(token);
-        set({ user, isAuthenticated: true });
+        set({ user, token, isAuthenticated: true });
       },
       logout: () => {
         setAccessToken(null);
-        set({ user: null, isAuthenticated: false });
-        // Clean up WS or other connections if needed
+        set({ user: null, token: null, isAuthenticated: false });
       },
       hasRole: (role) => {
         const { user } = get();
         if (!user) return false;
-        if (user.roles.includes('Administrator')) return true; // Admin has all rights
-        return user.roles.includes(role);
+        if (user.roles.includes('Owner') || user.roles.includes('Administrator')) return true;
+        return user.roles.includes(role as Role);
       },
       switchOrg: (orgId, orgName) => {
         set((state) => ({
@@ -51,10 +52,11 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'plato-auth-storage',
-      partialize: (state) => ({ user: state.user, isAuthenticated: state.isAuthenticated }),
+      partialize: (state) => ({ user: state.user, token: state.token, isAuthenticated: state.isAuthenticated }),
       onRehydrateStorage: () => (state) => {
-        // Re-sync access token with api client if needed, though secure cookies are preferred
-        // We assume token might be refreshed on next API call if expired
+        if (state?.token) {
+          setAccessToken(state.token);
+        }
       }
     }
   )

@@ -127,4 +127,32 @@ impl UserRepository for SqlxUserRepository {
             Ok(None)
         }
     }
+
+    async fn find_all(&self) -> Result<Vec<User>, RepositoryError> {
+        let rows = sqlx::query_as::<_, Row>(
+            "SELECT id, email, password_hash, password_updated_at, email_verified, status, role, full_name, organization_id FROM users ORDER BY created_at DESC"
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| RepositoryError::Database(e.to_string()))?;
+
+        let mut users = Vec::with_capacity(rows.len());
+        for r in rows {
+            let email = Email::new(r.email).map_err(|_| RepositoryError::Database("Bad email".into()))?;
+            let status = if r.status == "Active" { UserStatus::Active } else { UserStatus::Inactive };
+            let role = Role::from_str(&r.role).unwrap_or(Role::Operator);
+            users.push(User::reconstruct(
+                r.id.into(),
+                email,
+                r.password_hash,
+                r.password_updated_at,
+                r.email_verified,
+                status,
+                role,
+                r.full_name,
+                r.organization_id,
+            ));
+        }
+        Ok(users)
+    }
 }
