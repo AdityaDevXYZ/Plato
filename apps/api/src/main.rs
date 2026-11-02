@@ -183,6 +183,7 @@ async fn main() -> anyhow::Result<()> {
     let dee_routes = Router::new()
         .route("/:id", get(roe_handlers::get_deployment))
         .route("/:id/logs", get(roe_handlers::get_deployment_logs))
+        .route("/:id/packets", get(roe_handlers::get_deployment_packets))
         .route_layer(from_fn_with_state(app_state.clone(), middleware::auth_middleware));
 
     let auth_routes = Router::new()
