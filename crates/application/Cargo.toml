@@ -8,6 +8,8 @@ metrics.workspace = true
 tracing.workspace = true
 types = { path = "../types" }
 identity = { path = "../identity" }
+policy = { path = "../policy" }
+audit = { path = "../audit" }
 organization = { path = "../organization" }
 project = { path = "../project" }
 mission = { path = "../mission" }
@@ -17,6 +19,7 @@ eventbus = { path = "../eventbus" }
 uuid.workspace = true
 jsonwebtoken.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 time.workspace = true
 
 assurance = { path = "../assurance" }

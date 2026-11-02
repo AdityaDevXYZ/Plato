@@ -19,6 +19,8 @@ tracing.workspace = true
 sqlx.workspace = true
 types = { path = "../../crates/types" }
 identity = { path = "../../crates/identity" }
+policy = { path = "../../crates/policy" }
+audit = { path = "../../crates/audit" }
 organization = { path = "../../crates/organization" }
 project = { path = "../../crates/project" }
 mission = { path = "../../crates/mission" }

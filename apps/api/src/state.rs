@@ -49,5 +49,6 @@ pub struct AppState {
     pub analytics_service: Arc<DeploymentAnalyticsService>,
     pub user_service: Arc<UserService>,
     pub auth_service: Arc<AuthenticationService>,
+    pub audit_service: Arc<application::audit::AuditService>,
     pub telemetry_tx: tokio::sync::broadcast::Sender<TelemetryStreamMessage>,
 }

@@ -4,11 +4,12 @@ use crate::state::AppState;
 use application::auth::Claims;
 use uuid::Uuid;
 use axum::http::StatusCode;
-use types::{ReleaseId, MissionId, UserId};
+use types::UserId;
 use release::model::TransitionRecord;
 use assurance::model::{AssuranceReport, AssuranceDecision, FlightReleaseManifest, BinaryArtifact, CryptographicSignature};
 use readiness::model::{DeploymentReadinessReport, ReadinessDecision};
 use deployment::model::{DeploymentSession, DeploymentState, LogEntry, TelecommandPacket};
+use std::str::FromStr;
 
 #[derive(Deserialize)]
 pub struct CreateReleaseReq { pub version: String, pub mission_id: Uuid }
@@ -19,26 +20,121 @@ pub struct TransitionReq { pub reason: String }
 #[derive(Serialize)]
 pub struct ReleaseRes { pub id: Uuid, pub status: String }
 
-fn get_user_id(claims: &Claims) -> UserId { UserId::from(Uuid::parse_str(&claims.sub).unwrap()) }
+fn get_user_id(claims: &Claims) -> UserId {
+    UserId::from(Uuid::parse_str(&claims.sub).unwrap_or_default())
+}
 
-pub async fn create_release(State(state): State<AppState>, Extension(claims): Extension<Claims>, Json(req): Json<CreateReleaseReq>) -> Result<Json<ReleaseRes>, StatusCode> {
+fn get_user_uuid(claims: &Claims) -> Uuid {
+    Uuid::parse_str(&claims.sub).unwrap_or_default()
+}
+
+fn get_auth_ctx(claims: &Claims) -> policy::AuthorizationContext {
+    let role = policy::Role::from_str(&claims.role).unwrap_or(policy::Role::Viewer);
+    policy::AuthorizationContext {
+        user_id: get_user_id(claims),
+        role,
+    }
+}
+
+pub async fn create_release(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Json(req): Json<CreateReleaseReq>,
+) -> Result<Json<ReleaseRes>, StatusCode> {
+    let auth_ctx = get_auth_ctx(&claims);
+    policy::PolicyEngine::can_submit_release(&auth_ctx).map_err(|_| StatusCode::FORBIDDEN)?;
+
     let corr_id = Uuid::new_v4();
-    let r = state.roe_service.create_release(req.mission_id.into(), req.version, get_user_id(&claims), corr_id).await.map_err(|_| StatusCode::BAD_REQUEST)?;
+    let r = state.roe_service.create_release(req.mission_id.into(), req.version.clone(), get_user_id(&claims), corr_id)
+        .await.map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    let _ = state.audit_service.log(
+        get_user_uuid(&claims),
+        claims.email.clone(),
+        "CREATE_RELEASE".into(),
+        "Release".into(),
+        r.id().to_string(),
+        serde_json::json!({
+            "mission_id": req.mission_id,
+            "version": req.version,
+        }),
+    ).await;
+
     Ok(Json(ReleaseRes { id: r.id().into(), status: format!("{:?}", r.status()) }))
 }
 
-pub async fn validate_release(State(state): State<AppState>, Path(id): Path<Uuid>, Extension(claims): Extension<Claims>, Json(req): Json<TransitionReq>) -> Result<Json<ReleaseRes>, StatusCode> {
-    let r = state.roe_service.validate_release(id.into(), get_user_id(&claims), Uuid::new_v4(), req.reason).await.map_err(|_| StatusCode::BAD_REQUEST)?;
+pub async fn validate_release(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Extension(claims): Extension<Claims>,
+    Json(req): Json<TransitionReq>,
+) -> Result<Json<ReleaseRes>, StatusCode> {
+    let auth_ctx = get_auth_ctx(&claims);
+    policy::PolicyEngine::can_validate_release(&auth_ctx).map_err(|_| StatusCode::FORBIDDEN)?;
+
+    let r = state.roe_service.validate_release(id.into(), get_user_id(&claims), Uuid::new_v4(), req.reason.clone())
+        .await.map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    let _ = state.audit_service.log(
+        get_user_uuid(&claims),
+        claims.email.clone(),
+        "VALIDATE_RELEASE".into(),
+        "Release".into(),
+        id.to_string(),
+        serde_json::json!({ "reason": req.reason }),
+    ).await;
+
     Ok(Json(ReleaseRes { id: r.id().into(), status: format!("{:?}", r.status()) }))
 }
 
-pub async fn submit_release(State(state): State<AppState>, Path(id): Path<Uuid>, Extension(claims): Extension<Claims>, Json(req): Json<TransitionReq>) -> Result<Json<ReleaseRes>, StatusCode> {
-    let r = state.roe_service.submit_release(id.into(), get_user_id(&claims), Uuid::new_v4(), req.reason).await.map_err(|_| StatusCode::BAD_REQUEST)?;
+pub async fn submit_release(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Extension(claims): Extension<Claims>,
+    Json(req): Json<TransitionReq>,
+) -> Result<Json<ReleaseRes>, StatusCode> {
+    let auth_ctx = get_auth_ctx(&claims);
+    policy::PolicyEngine::can_submit_release(&auth_ctx).map_err(|_| StatusCode::FORBIDDEN)?;
+
+    let r = state.roe_service.submit_release(id.into(), get_user_id(&claims), Uuid::new_v4(), req.reason.clone())
+        .await.map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    let _ = state.audit_service.log(
+        get_user_uuid(&claims),
+        claims.email.clone(),
+        "SUBMIT_RELEASE".into(),
+        "Release".into(),
+        id.to_string(),
+        serde_json::json!({ "reason": req.reason }),
+    ).await;
+
     Ok(Json(ReleaseRes { id: r.id().into(), status: format!("{:?}", r.status()) }))
 }
 
-pub async fn approve_release(State(state): State<AppState>, Path(id): Path<Uuid>, Extension(claims): Extension<Claims>, Json(req): Json<TransitionReq>) -> Result<Json<ReleaseRes>, StatusCode> {
-    let r = state.roe_service.approve_release(id.into(), get_user_id(&claims), Uuid::new_v4(), req.reason).await.map_err(|_| StatusCode::BAD_REQUEST)?;
+pub async fn approve_release(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Extension(claims): Extension<Claims>,
+    Json(req): Json<TransitionReq>,
+) -> Result<Json<ReleaseRes>, StatusCode> {
+    let auth_ctx = get_auth_ctx(&claims);
+    policy::PolicyEngine::can_approve_release(&auth_ctx).map_err(|_| StatusCode::FORBIDDEN)?;
+
+    let r = state.roe_service.approve_release(id.into(), get_user_id(&claims), Uuid::new_v4(), req.reason.clone())
+        .await.map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    let _ = state.audit_service.log(
+        get_user_uuid(&claims),
+        claims.email.clone(),
+        "APPROVE_RELEASE".into(),
+        "Release".into(),
+        id.to_string(),
+        serde_json::json!({
+            "reason": req.reason,
+            "approved_by_role": auth_ctx.role.to_string()
+        }),
+    ).await;
+
     Ok(Json(ReleaseRes { id: r.id().into(), status: format!("{:?}", r.status()) }))
 }
 
@@ -83,8 +179,12 @@ pub struct CreateManifestReq {
 pub async fn create_release_manifest(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
+    Extension(claims): Extension<Claims>,
     Json(req): Json<CreateManifestReq>,
 ) -> Result<Json<FlightReleaseManifest>, StatusCode> {
+    let auth_ctx = get_auth_ctx(&claims);
+    policy::PolicyEngine::can_submit_release(&auth_ctx).map_err(|_| StatusCode::FORBIDDEN)?;
+
     let artifacts = req.artifacts.into_iter().map(|a| BinaryArtifact {
         artifact_id: a.artifact_id.unwrap_or_else(Uuid::new_v4),
         name: a.name,
@@ -92,14 +192,14 @@ pub async fn create_release_manifest(
         size_bytes: a.size_bytes,
         expected_sha256: a.expected_sha256,
         payload_hex: a.payload_hex,
-    }).collect();
+    }).collect::<Vec<_>>();
 
     let signatures = req.signatures.into_iter().map(|s| CryptographicSignature {
         signer_id: s.signer_id,
         algorithm: s.algorithm,
         public_key_hex: s.public_key_hex,
         signature_hex: s.signature_hex,
-    }).collect();
+    }).collect::<Vec<_>>();
 
     let manifest = FlightReleaseManifest {
         release_id: id.into(),
@@ -113,6 +213,21 @@ pub async fn create_release_manifest(
     };
 
     state.rae_service.save_manifest(&manifest).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let _ = state.audit_service.log(
+        get_user_uuid(&claims),
+        claims.email.clone(),
+        "CREATE_RELEASE_MANIFEST".into(),
+        "ReleaseManifest".into(),
+        id.to_string(),
+        serde_json::json!({
+            "version": manifest.version,
+            "target_architecture": manifest.target_architecture,
+            "artifacts_count": manifest.artifacts.len(),
+            "signatures_count": manifest.signatures.len()
+        }),
+    ).await;
+
     Ok(Json(manifest))
 }
 
@@ -124,17 +239,37 @@ pub async fn get_release_manifest(
     Ok(Json(manifest))
 }
 
-pub async fn assure_release(State(state): State<AppState>, Path(id): Path<Uuid>, Extension(claims): Extension<Claims>) -> Result<Json<AssuranceReport>, StatusCode> {
+pub async fn assure_release(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Extension(claims): Extension<Claims>,
+) -> Result<Json<AssuranceReport>, StatusCode> {
+    let auth_ctx = get_auth_ctx(&claims);
+    policy::PolicyEngine::can_assure_release(&auth_ctx).map_err(|_| StatusCode::FORBIDDEN)?;
+
     let corr_id = Uuid::new_v4();
     let actor = get_user_id(&claims);
     
     let report = state.rae_service.run_assurance(id.into(), corr_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     
-    if report.decision == AssuranceDecision::Assured || report.decision == AssuranceDecision::AssuredWithAdvisory {
+    let passed = report.decision == AssuranceDecision::Assured || report.decision == AssuranceDecision::AssuredWithAdvisory;
+    if passed {
         let _ = state.roe_service.mark_assured(id.into(), actor, corr_id, "Assurance passed".into()).await;
     } else {
         let _ = state.roe_service.fail_release(id.into(), actor, corr_id, "Assurance failed".into()).await;
     }
+
+    let _ = state.audit_service.log(
+        get_user_uuid(&claims),
+        claims.email.clone(),
+        "RUN_RELEASE_ASSURANCE".into(),
+        "Release".into(),
+        id.to_string(),
+        serde_json::json!({
+            "decision": format!("{:?}", report.decision),
+            "passed": passed
+        }),
+    ).await;
 
     Ok(Json(report))
 }
@@ -144,17 +279,37 @@ pub async fn get_assurance(State(state): State<AppState>, Path(id): Path<Uuid>) 
     Ok(Json(report))
 }
 
-pub async fn assess_readiness(State(state): State<AppState>, Path(id): Path<Uuid>, Extension(claims): Extension<Claims>) -> Result<Json<DeploymentReadinessReport>, StatusCode> {
+pub async fn assess_readiness(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Extension(claims): Extension<Claims>,
+) -> Result<Json<DeploymentReadinessReport>, StatusCode> {
+    let auth_ctx = get_auth_ctx(&claims);
+    policy::PolicyEngine::can_submit_release(&auth_ctx).map_err(|_| StatusCode::FORBIDDEN)?;
+
     let corr_id = Uuid::new_v4();
     let actor = get_user_id(&claims);
     
     let report = state.dra_service.run_readiness(id.into(), corr_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     
-    if report.decision == ReadinessDecision::Ready || report.decision == ReadinessDecision::ReadyWithWarnings {
+    let ready = report.decision == ReadinessDecision::Ready || report.decision == ReadinessDecision::ReadyWithWarnings;
+    if ready {
         let _ = state.roe_service.mark_ready(id.into(), actor, corr_id, "Readiness passed".into()).await;
     } else {
         let _ = state.roe_service.fail_release(id.into(), actor, corr_id, "Readiness failed".into()).await;
     }
+
+    let _ = state.audit_service.log(
+        get_user_uuid(&claims),
+        claims.email.clone(),
+        "ASSESS_DEPLOYMENT_READINESS".into(),
+        "Release".into(),
+        id.to_string(),
+        serde_json::json!({
+            "decision": format!("{:?}", report.decision),
+            "ready": ready
+        }),
+    ).await;
 
     Ok(Json(report))
 }
@@ -169,6 +324,9 @@ pub async fn deploy_release(
     Path(id): Path<Uuid>,
     Extension(claims): Extension<Claims>,
 ) -> Result<(StatusCode, Json<DeploymentSession>), StatusCode> {
+    let auth_ctx = get_auth_ctx(&claims);
+    policy::PolicyEngine::can_deploy(&auth_ctx).map_err(|_| StatusCode::FORBIDDEN)?;
+
     let corr_id = Uuid::new_v4();
     let actor = get_user_id(&claims);
     
@@ -177,6 +335,19 @@ pub async fn deploy_release(
     
     let session = state.dee_service.queue_deployment(id.into(), corr_id, None, Some("bank_a".to_string()))
         .await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let _ = state.audit_service.log(
+        get_user_uuid(&claims),
+        claims.email.clone(),
+        "INITIATE_DEPLOYMENT".into(),
+        "DeploymentSession".into(),
+        session.session_id.to_string(),
+        serde_json::json!({
+            "release_id": id,
+            "target_bank": "bank_a",
+            "session_id": session.session_id
+        }),
+    ).await;
 
     let dee = state.dee_service.clone();
     let roe = state.roe_service.clone();

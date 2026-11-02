@@ -13,6 +13,8 @@ tracing.workspace = true
 async-trait.workspace = true
 types = { path = "../types" }
 identity = { path = "../identity" }
+policy = { path = "../policy" }
+audit = { path = "../audit" }
 organization = { path = "../organization" }
 project = { path = "../project" }
 mission = { path = "../mission" }
