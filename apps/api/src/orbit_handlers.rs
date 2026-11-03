@@ -60,7 +60,11 @@ pub async fn get_prediction(
     let minutes = query.minutes.unwrap_or(120);
     let step = query.step.unwrap_or(5);
     let preds = state.orbit_query.get_predictions(id, minutes, step).await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| match e {
+            application::error::ApplicationError::NotFound(_) => StatusCode::NOT_FOUND,
+            application::error::ApplicationError::Validation(_) => StatusCode::BAD_REQUEST,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        })?;
     Ok(Json(preds))
 }
 
@@ -72,7 +76,11 @@ pub async fn get_look_angles(
 ) -> Result<Json<LookAngles>, StatusCode> {
     let alt_m = query.alt.unwrap_or(0.0);
     let look = state.orbit_query.get_look_angles(id, query.lat, query.lon, alt_m).await
-        .map_err(|_| StatusCode::BAD_REQUEST)?;
+        .map_err(|e| match e {
+            application::error::ApplicationError::NotFound(_) => StatusCode::NOT_FOUND,
+            application::error::ApplicationError::Validation(_) => StatusCode::BAD_REQUEST,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        })?;
     Ok(Json(look))
 }
 
@@ -87,7 +95,11 @@ pub async fn get_passes(
     let hours = query.hours.unwrap_or(24);
 
     let passes = state.orbit_query.get_satellite_passes(id, query.lat, query.lon, alt_m, min_el, hours).await
-        .map_err(|_| StatusCode::BAD_REQUEST)?;
+        .map_err(|e| match e {
+            application::error::ApplicationError::NotFound(_) => StatusCode::NOT_FOUND,
+            application::error::ApplicationError::Validation(_) => StatusCode::BAD_REQUEST,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        })?;
     Ok(Json(passes))
 }
 
