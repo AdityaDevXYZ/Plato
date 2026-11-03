@@ -130,7 +130,7 @@ impl UserRepository for SqlxUserRepository {
 
     async fn find_all(&self) -> Result<Vec<User>, RepositoryError> {
         let rows = sqlx::query_as::<_, Row>(
-            "SELECT id, email, password_hash, password_updated_at, email_verified, status, role, full_name, organization_id FROM users ORDER BY created_at DESC"
+            "SELECT id, email, password_hash, password_updated_at, email_verified, status, role, full_name, organization_id FROM users ORDER BY password_updated_at DESC"
         )
         .fetch_all(&self.pool)
         .await

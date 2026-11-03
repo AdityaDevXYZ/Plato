@@ -56,7 +56,12 @@ impl ReleaseRepository for SqlxReleaseRepository {
         }
 
         for ev in events {
-            let p_json = format!("{:?}", ev.payload);
+            let p_json = serde_json::json!({
+                "event_type": ev.event_type,
+                "correlation_id": ev.correlation_id,
+                "source": ev.source,
+                "debug": format!("{:?}", ev.payload)
+            });
             let evt_type = ev.event_type.clone();
             sqlx::query("INSERT INTO outbox_messages (id, event_type, payload, status, created_at, retry_count) VALUES ($1, $2, $3, 'PENDING', NOW(), 0)")
                 .bind(ev.event_id)

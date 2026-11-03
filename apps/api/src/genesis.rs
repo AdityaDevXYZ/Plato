@@ -19,6 +19,12 @@ use storage::{
 use time::OffsetDateTime;
 
 pub async fn bootstrap_genesis_if_needed(pool: &PgPool) -> anyhow::Result<()> {
+    bootstrap_constellation_if_needed(pool).await?;
+    bootstrap_orbits_if_needed(pool).await?;
+    Ok(())
+}
+
+async fn bootstrap_constellation_if_needed(pool: &PgPool) -> anyhow::Result<()> {
     let row: (i64,) = sqlx::query_as("SELECT count(*) FROM users")
         .fetch_one(pool)
         .await?;
@@ -34,66 +40,63 @@ pub async fn bootstrap_genesis_if_needed(pool: &PgPool) -> anyhow::Result<()> {
     let audit_repo = SqlxAuditRepository::new(pool.clone());
     let deployment_repo = SqlxDeploymentRepository::new(pool.clone());
 
-    // 1. Organization
     let org_id = Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap();
-    let org_data = serde_json::json!({
-        "id": org_id,
-        "name": "PLATO Commercial Spaceflight Operations",
-        "description": "Primary constellation mission control organization",
-        "created_at": OffsetDateTime::now_utc(),
-        "updated_at": OffsetDateTime::now_utc()
-    });
-    let _ = sqlx::query(
-        "INSERT INTO organizations (id, data) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING"
-    )
-    .bind(org_id)
-    .bind(org_data)
-    .execute(pool)
-    .await;
 
-    // 2. Owner User
+    // 1. Owner User (initially without org_id to satisfy foreign key constraints)
     let admin_email = Email::new("admin@plato.aero").map_err(|e| anyhow::anyhow!("{:?}", e))?;
     let admin_user = User::new(
         admin_email,
         "PlatoAdmin2026!",
         Role::Owner,
         "Flight Operations Director".to_string(),
-        Some(org_id),
+        None,
     ).map_err(|e| anyhow::anyhow!("{:?}", e))?;
     user_repo.save(&admin_user).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
-    // 3. Project & Mission
-    let project_id = Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap();
-    let project_data = serde_json::json!({
-        "id": project_id,
-        "organization_id": org_id,
-        "name": "Alpha Constellation Project",
-        "status": "Active"
-    });
+    let admin_user_id: Uuid = admin_user.id().into();
+
+    // 2. Organization referencing admin_user as owner
     let _ = sqlx::query(
-        "INSERT INTO projects (id, data) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING"
+        "INSERT INTO organizations (id, name, owner_id, status) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING"
+    )
+    .bind(org_id)
+    .bind("PLATO Commercial Spaceflight Operations")
+    .bind(admin_user_id)
+    .bind("Active")
+    .execute(pool)
+    .await?;
+
+    // 3. Link user to organization
+    let _ = sqlx::query("UPDATE users SET organization_id = $1 WHERE id = $2")
+        .bind(org_id)
+        .bind(admin_user_id)
+        .execute(pool)
+        .await?;
+
+    // 4. Project & Mission
+    let project_id = Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap();
+    let _ = sqlx::query(
+        "INSERT INTO projects (id, org_id, name, status) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING"
     )
     .bind(project_id)
-    .bind(project_data)
+    .bind(org_id)
+    .bind("Alpha Constellation Project")
+    .bind("Active")
     .execute(pool)
-    .await;
+    .await?;
 
     let mission_id = Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap();
-    let mission_data = serde_json::json!({
-        "id": mission_id,
-        "project_id": project_id,
-        "name": "Alpha Constellation LEO",
-        "status": "Active"
-    });
     let _ = sqlx::query(
-        "INSERT INTO missions (id, data) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING"
+        "INSERT INTO missions (id, project_id, name, status) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING"
     )
     .bind(mission_id)
-    .bind(mission_data)
+    .bind(project_id)
+    .bind("Alpha Constellation LEO")
+    .bind("Active")
     .execute(pool)
-    .await;
+    .await?;
 
-    // 4. Initial Constellation Satellites
+    // 5. Initial Constellation Satellites
     let sat_configs = vec![
         ("aaaaaaaa-0001-0000-0000-000000000001", "Alpha-1", 59001, 98, 94.2, 42.0, 41.0, 22.5, 21.4),
         ("aaaaaaaa-0002-0000-0000-000000000002", "Alpha-2", 59002, 95, 88.0, 39.0, 48.5, 31.0, 23.1),
@@ -122,13 +125,13 @@ pub async fn bootstrap_genesis_if_needed(pool: &PgPool) -> anyhow::Result<()> {
         let _ = twin_repo.save_satellite(&sat).await;
     }
 
-    // 5. Genesis Audit Ledger Entry (SHA-256 hash chaining)
+    // 6. Genesis Audit Ledger Entry (SHA-256 hash chaining)
     let _ = audit_repo.append_entry(
-        admin_user.id().into(),
+        admin_user_id,
         "admin@plato.aero".to_string(),
         "GENESIS_INITIALIZED".to_string(),
         "SYSTEM".to_string(),
-        "00000000-0000-0000-0000-000000000001".to_string(),
+        org_id.to_string(),
         serde_json::json!({
             "message": "PLATO Mission Control Platform initialized for satellite constellation operations",
             "version": "1.0.0",
@@ -137,23 +140,19 @@ pub async fn bootstrap_genesis_if_needed(pool: &PgPool) -> anyhow::Result<()> {
         }),
     ).await;
 
-    // 6. Initial Deployment Session
+    // 7. Initial Approved Release
     let release_uuid = Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap();
-    let release_data = serde_json::json!({
-        "id": release_uuid,
-        "name": "Flight Firmware v1.2.1-hotfix",
-        "version": "1.2.1",
-        "status": "Approved",
-        "mission_id": mission_id
-    });
     let _ = sqlx::query(
-        "INSERT INTO releases (id, data) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING"
+        "INSERT INTO releases (id, mission_id, version, status, history, version_num) VALUES ($1, $2, $3, $4, '[]'::jsonb, 1) ON CONFLICT (id) DO NOTHING"
     )
     .bind(release_uuid)
-    .bind(release_data)
+    .bind(mission_id)
+    .bind("v1.2.1-hotfix")
+    .bind("Approved")
     .execute(pool)
-    .await;
+    .await?;
 
+    // 8. Initial Deployment Session
     let mut session = DeploymentSession::new(
         ReleaseId::from(release_uuid),
         Uuid::new_v4(),
@@ -169,5 +168,52 @@ pub async fn bootstrap_genesis_if_needed(pool: &PgPool) -> anyhow::Result<()> {
     let _ = deployment_repo.save(&session).await;
 
     info!("✅ [PLATO GENESIS] Constellation and Flight Operations bootstrapped successfully! Initial Operator: admin@plato.aero / PlatoAdmin2026!");
+    Ok(())
+}
+
+pub async fn bootstrap_orbits_if_needed(pool: &PgPool) -> anyhow::Result<()> {
+    let row: (i64,) = sqlx::query_as("SELECT count(*) FROM satellite_orbits")
+        .fetch_one(pool)
+        .await?;
+
+    if row.0 >= 3 {
+        return Ok(());
+    }
+
+    info!("🛰️ [PLATO GENESIS] Bootstrapping SGP4 orbital ephemeris for constellation...");
+    let orbit_repo = std::sync::Arc::new(storage::orbit::SqlxOrbitRepository::new(pool.clone()));
+    let orbit_svc = application::orbit::OrbitalQueryService::new(orbit_repo);
+
+    let orbit_configs = vec![
+        (
+            Uuid::parse_str("aaaaaaaa-0001-0000-0000-000000000001").unwrap(),
+            "Alpha-1",
+            "1 59001U 26001A   26300.00000000  .00001000  00000-0  50000-4 0  9995",
+            "2 59001  97.5000 120.0000 0010000  45.0000 315.0000 15.10000000 10008",
+        ),
+        (
+            Uuid::parse_str("aaaaaaaa-0002-0000-0000-000000000002").unwrap(),
+            "Alpha-2",
+            "1 59002U 26001B   26300.00000000  .00001000  00000-0  50000-4 0  9996",
+            "2 59002  97.5000 240.0000 0010000  45.0000 315.0000 15.10000000 10002",
+        ),
+        (
+            Uuid::parse_str("aaaaaaaa-0003-0000-0000-000000000003").unwrap(),
+            "Alpha-3",
+            "1 59003U 26001C   26300.00000000  .00001000  00000-0  50000-4 0  9997",
+            "2 59003  97.5000 359.0000 0010000  45.0000 315.0000 15.10000000 10004",
+        ),
+    ];
+
+    for (sat_id, name, line1, line2) in orbit_configs {
+        let tle = orbit::model::TleSet {
+            name: name.to_string(),
+            line1: line1.to_string(),
+            line2: line2.to_string(),
+        };
+        let _ = orbit_svc.set_satellite_tle(sat_id, tle).await;
+    }
+
+    info!("✅ [PLATO GENESIS] SGP4 Constellation ephemeris populated for all satellites.");
     Ok(())
 }
