@@ -22,6 +22,7 @@ use telemetry::init_telemetry;
 use std::sync::Arc;
 use state::AppState;
 use tower_http::trace::TraceLayer;
+use tower_http::cors::CorsLayer;
 
 use storage::{
     assurance::SqlxAssuranceRepository,
@@ -341,6 +342,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api/v1/risk", risk_routes)
         .nest("/api/v1/coordination", coord_routes)
         .nest("/api/v1/analytics", analytics_routes)
+        .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(app_state);
 

@@ -13,6 +13,10 @@
 **The Mission Control DevSecOps Control Plane for Satellite Mega-Constellations.**  
 *Bridging the divide between Git commits on Earth and autonomous, cryptographically verified software execution in orbit.*
 
+> 🚀 **Quick Guide:** Explore the live interactive operator & flight verification guide at **[https://plato-3afac.web.app/](https://plato-3afac.web.app/)**
+
+[Quick Guide (Web App)](https://plato-3afac.web.app/) •
+[Operator Verification Guide](../guide/GUIDE.md) •
 [Executive Summary](#executive-summary--the-yc-thesis) •
 [Objectives](#core-objectives-of-plato) •
 [Competitive Landscape](#competitive-landscape--alternatives-analysis) •
