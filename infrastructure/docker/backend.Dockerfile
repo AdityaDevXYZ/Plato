@@ -12,8 +12,8 @@ RUN apt-get update && apt-get install -y \
 # Copy workspace sources and manifests
 COPY . .
 
-# Build release binaries for both the API Gateway and the Asynchronous DEE Worker
-RUN cargo build --release --bin api --bin worker
+# Build release binaries with controlled concurrency to prevent Cloud VM memory exhaustion
+RUN cargo build --release --jobs 2 --bin api --bin worker
 
 # Production runner image
 FROM debian:bookworm-slim AS runner

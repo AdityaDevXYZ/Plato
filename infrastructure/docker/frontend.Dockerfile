@@ -13,7 +13,9 @@ COPY apps/web ./
 RUN mkdir -p ./public
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
-RUN npm run build
+ENV NODE_OPTIONS="--max-old-space-size=2048"
+# Remove .babelrc to enable native fast SWC compiler on x86_64 Linux container
+RUN rm -f .babelrc && npm run build
 
 FROM node:20-alpine AS runner
 WORKDIR /app

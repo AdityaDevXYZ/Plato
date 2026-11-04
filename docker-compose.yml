@@ -22,6 +22,7 @@ services:
       - plato-net
 
   plato-api:
+    image: plato-backend:latest
     build:
       context: .
       dockerfile: infrastructure/docker/backend.Dockerfile
@@ -52,9 +53,7 @@ services:
       - plato-net
 
   plato-worker:
-    build:
-      context: .
-      dockerfile: infrastructure/docker/backend.Dockerfile
+    image: plato-backend:latest
     container_name: plato-worker
     restart: unless-stopped
     command: ["plato-worker"]
