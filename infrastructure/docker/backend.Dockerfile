@@ -1,5 +1,5 @@
 # Multi-stage production build for PLATO API & Background DEE Worker
-FROM rust:1.77-slim-bookworm AS builder
+FROM rust:bookworm AS builder
 WORKDIR /app
 
 # Install build dependencies
@@ -35,7 +35,7 @@ RUN ln -s /usr/local/bin/plato-api /usr/local/bin/api && \
     ln -s /usr/local/bin/plato-worker /usr/local/bin/worker
 
 # Copy database migrations for automatic runtime schema migration
-COPY migrations ./migrations
+COPY crates/storage/migrations ./migrations
 
 EXPOSE 8080
 

@@ -1,13 +1,16 @@
 # Multi-stage production build for PLATO Mission Control Web Frontend (Next.js 14)
 FROM node:20-alpine AS deps
+RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY apps/web/package.json apps/web/package-lock.json* ./
 RUN npm ci
 
 FROM node:20-alpine AS builder
+RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY apps/web ./
+RUN mkdir -p ./public
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 RUN npm run build
